@@ -4,12 +4,12 @@ Searches companies via Wikidata — free, no API keys, global coverage.
 Returns: name, description, industry, employees, founded, HQ, website.
 """
 
+import subprocess, json as _json
 from typing import Optional
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import httpx
 
 app = FastAPI(title="Company Info API", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -42,28 +42,29 @@ class CompanyInfo(BaseModel):
     wikidata_id: Optional[str] = None
 
 
-async def wikidata_search(query: str, limit: int = 5) -> list[dict]:
-    """Search Wikidata for entities matching query."""
-    async with httpx.AsyncClient(timeout=10, headers={"Accept": "application/json"}) as client:
-        r = await client.get(WIKIDATA_API, params={
-            "action": "wbsearchentities",
-            "search": query,
-            "language": "en",
-            "format": "json",
-            "limit": limit,
-            "type": "item",
-        })
-        r.raise_for_status()
-        return r.json().get("search", [])
+def curl_get(url: str, params: dict = None) -> dict:
+    """Run curl and return JSON."""
+    cmd = ["curl", "-s", "--connect-timeout", "8", "--max-time", "12", url]
+    if params:
+        from urllib.parse import urlencode
+        cmd[-1] += "?" + urlencode(params)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0 or not result.stdout.strip():
+        raise RuntimeError(f"curl failed: {result.stderr[:100]}")
+    return _json.loads(result.stdout)
 
 
-async def wikidata_entity(qid: str) -> dict:
-    """Get full entity data for a Q-ID."""
-    async with httpx.AsyncClient(timeout=10, headers={"Accept": "application/json"}) as client:
-        r = await client.get(f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json")
-        r.raise_for_status()
-        data = r.json()
-        return data.get("entities", {}).get(qid, {})
+def wikidata_search(query: str, limit: int = 5) -> list[dict]:
+    data = curl_get(WIKIDATA_API, {
+        "action": "wbsearchentities", "search": query,
+        "language": "en", "format": "json", "limit": str(limit), "type": "item",
+    })
+    return data.get("search", [])
+
+
+def wikidata_entity(qid: str) -> dict:
+    data = curl_get(f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json")
+    return data.get("entities", {}).get(qid, {})
 
 
 def parse_entity(entity: dict) -> CompanyInfo:
@@ -126,10 +127,10 @@ async def search_companies(
     limit: int = Query(5, ge=1, le=10),
 ):
     """Search for companies by name."""
-    results = await wikidata_search(q, limit)
+    results = wikidata_search(q, limit)
     companies = []
     for r in results:
-        entity = await wikidata_entity(r["id"])
+        entity = wikidata_entity(r["id"])
         companies.append(parse_entity(entity))
     return companies
 
@@ -139,8 +140,8 @@ async def lookup_company(
     q: str = Query(..., description="Company name — returns best match"),
 ):
     """Look up a single company — returns the best match."""
-    results = await wikidata_search(q, 1)
+    results = wikidata_search(q, 1)
     if not results:
         raise HTTPException(404, f"Company not found: {q}")
-    entity = await wikidata_entity(results[0]["id"])
+    entity = wikidata_entity(results[0]["id"])
     return parse_entity(entity)
