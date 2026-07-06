@@ -67,6 +67,18 @@ def wikidata_entity(qid: str) -> dict:
     return data.get("entities", {}).get(qid, {})
 
 
+def get_label(qid: str) -> str:
+    """Get English label for a Wikidata Q-ID."""
+    try:
+        data = curl_get(WIKIDATA_API, {
+            "action": "wbgetentities", "ids": qid,
+            "props": "labels", "languages": "en", "format": "json",
+        })
+        return data["entities"][qid]["labels"]["en"]["value"]
+    except:
+        return qid
+
+
 def parse_entity(entity: dict) -> CompanyInfo:
     """Parse Wikidata entity into CompanyInfo."""
     labels = entity.get("labels", {})
@@ -93,9 +105,13 @@ def parse_entity(entity: dict) -> CompanyInfo:
 
     employees = claim_value("P1128") or claim_value("P1129")
     founded = claim_value("P571")
-    industry = claim_value("P452")
-    hq = claim_value("P159")
-    website = claim_value("P856")
+    industry_v = claim_value("P452")
+    hq_v = claim_value("P159")
+    country_v = claim_value("P17")
+
+    industry = get_label(industry_v) if industry_v and industry_v.startswith("Q") else industry_v
+    hq = get_label(hq_v) if hq_v and hq_v.startswith("Q") else hq_v
+    country = get_label(country_v) if country_v and country_v.startswith("Q") else country_v
     country = claim_value("P17")
 
     return CompanyInfo(
