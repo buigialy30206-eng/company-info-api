@@ -104,6 +104,7 @@ def parse_entity(entity: dict) -> CompanyInfo:
     industry = resolve_id(industry_v)
     hq = resolve_id(hq_v)
     country = resolve_id(country_v)
+    website = claim_value("P856")
 
     return CompanyInfo(
         name=name,
