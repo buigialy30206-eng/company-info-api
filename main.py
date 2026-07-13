@@ -93,7 +93,7 @@ async def health():
 
 @app.get("/")
 async def root():
-    return {"service": "Company Info API", "version": "1.1.0"}
+    return {"service": "Company Info API", "version": "1.1.0", "related": ["Domain WHOIS API", "Email Validator API", "Places Search API"]}
 
 @app.get("/search", response_model=list[CompanyInfo])
 async def search_companies(
