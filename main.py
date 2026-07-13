@@ -8,8 +8,6 @@ from fastapi import FastAPI, Depends, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-app = FastAPI(title="Company Info API", version="1.1.0", dependencies=[Depends(_rate_limit)])
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 import time as _t, threading as _th
 _rl_win, _rl_max, _rl_hits, _rl_lk = 60, 60, {}, _th.Lock()
 
@@ -26,6 +24,9 @@ async def _rate_limit(request):
                 if e['c'] > _rl_max: raise HTTPException(429, 'Too many requests')
         else: _rl_hits[ip] = {'s': now, 'c': 1}
     return True
+
+app = FastAPI(title="Company Info API", version="1.1.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
