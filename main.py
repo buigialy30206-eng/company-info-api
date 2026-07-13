@@ -4,37 +4,18 @@ Searches companies via Wikidata — free, global coverage.
 """
 import subprocess, json as _json, time, threading
 from typing import Optional
-from fastapi import FastAPI, Depends, Query, HTTPException
+from fastapi import Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-import time as _t, threading as _th
-_rl_win, _rl_max, _rl_hits, _rl_lk = 60, 60, {}, _th.Lock()
-
-async def _rate_limit(request):
-    from fastapi import Request, HTTPException
-    ip = (request.headers.get('X-Forwarded-For','') or request.headers.get('X-Real-IP','') or (request.client.host if request.client else '127.0.0.1')).split(',')[0].strip()
-    now = _t.time()
-    with _rl_lk:
-        e = _rl_hits.get(ip)
-        if e:
-            if now - e['s'] > _rl_win: e['s'], e['c'] = now, 1
-            else:
-                e['c'] += 1
-                if e['c'] > _rl_max: raise HTTPException(429, 'Too many requests')
-        else: _rl_hits[ip] = {'s': now, 'c': 1}
-    return True
-
 app = FastAPI(title="Company Info API", version="1.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
 
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 
 _cache = {}
 _cache_lock = threading.Lock()
 CACHE_TTL = 86400  # Company data changes rarely, cache 24h
-
 
 class CompanyInfo(BaseModel):
     name: str
@@ -47,7 +28,6 @@ class CompanyInfo(BaseModel):
     country: Optional[str] = None
     wikidata_id: Optional[str] = None
 
-
 def curl_get(url: str, params: dict = None) -> dict:
     url = url if not params else url + "?" + "&".join(f"{k}={v}" for k, v in params.items())
     cmd = ["curl", "-s", "--connect-timeout", "6", "--max-time", "10", url]
@@ -59,7 +39,6 @@ def curl_get(url: str, params: dict = None) -> dict:
         pass
     return {}
 
-
 def wikidata_search(query: str, limit: int = 5) -> list[dict]:
     data = curl_get(WIKIDATA_API, {
         "action": "wbsearchentities", "search": query,
@@ -67,11 +46,9 @@ def wikidata_search(query: str, limit: int = 5) -> list[dict]:
     })
     return data.get("search", [])
 
-
 def wikidata_entity(qid: str) -> dict:
     data = curl_get(f"https://www.wikidata.org/wiki/Special:EntityData/{qid}.json")
     return data.get("entities", {}).get(qid, {})
-
 
 def parse_entity(entity: dict) -> CompanyInfo:
     labels = entity.get("labels", {})
@@ -110,16 +87,13 @@ def parse_entity(entity: dict) -> CompanyInfo:
         wikidata_id=entity.get("id"),
     )
 
-
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "source": "Wikidata", "cache_size": len(_cache)}
 
-
 @app.get("/")
 async def root():
     return {"service": "Company Info API", "version": "1.1.0"}
-
 
 @app.get("/search", response_model=list[CompanyInfo])
 async def search_companies(
@@ -132,7 +106,6 @@ async def search_companies(
         entity = wikidata_entity(r["id"])
         companies.append(parse_entity(entity))
     return companies
-
 
 @app.get("/lookup", response_model=CompanyInfo)
 async def lookup_company(q: str = Query(..., description="Company name — returns best match")):
